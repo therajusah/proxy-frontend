@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title id="doc-title">Field note | RelayNorth</title>
+  <meta name="description" id="doc-desc" content="A RelayNorth field note.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar"><a class="brand" href="/"><span class="brand-mark">↗</span><span>RelayNorth</span></a><nav class="nav" aria-label="Main navigation"><a href="/blog">Field notes</a><a class="nav-cta" href="/">Open a site</a></nav></header>
+    <main class="article-shell">
+      <span class="kicker" id="article-category">Field note</span>
+      <h1 id="article-title">Loading…</h1>
+      <p class="article-meta" id="article-meta">RelayNorth Editorial</p>
+      <p class="article-lede" id="article-lede"></p>
+      <article class="article-body" id="article-body"></article>
+    </main>
+    <footer class="footer"><span>© 2026 RelayNorth.</span><div class="footer-links"><a href="/blog">All notes</a><a href="/privacy">Privacy</a></div></footer>
+  </div>
+  <script src="/config.js"></script>
+  <script>
+    const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+    const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const slug = decodeURIComponent(location.pathname.replace(/^\/blog\//, '').replace(/\/$/, ''));
+
+    function setText(id, value) { document.getElementById(id).textContent = value; }
+
+    (async function loadArticle() {
+      if (!slug) { setText('article-title', 'Article not found'); return; }
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/blog/posts/${encodeURIComponent(slug)}`, {headers: {Accept: 'application/json'}});
+        const post = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(post.detail || 'Article not found');
+        document.getElementById('doc-title').textContent = `${post.title} | RelayNorth`;
+        document.getElementById('doc-desc').setAttribute('content', post.excerpt || '');
+        setText('article-category', post.category || 'Field note');
+        setText('article-title', post.title || '');
+        setText('article-lede', post.excerpt || '');
+        const when = post.published_at || post.updated_at;
+        const date = when ? new Date(when * 1000).toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'}) : '';
+        setText('article-meta', `RelayNorth Editorial${date ? ' · ' + date : ''}`);
+        // body_html is sanitized server-side (bleach) before it is returned.
+        document.getElementById('article-body').innerHTML = post.body_html || '';
+      } catch (error) {
+        setText('article-title', 'Article not found');
+        setText('article-lede', esc(error.message));
+      }
+    })();
+  </script>
+</body>
+</html>

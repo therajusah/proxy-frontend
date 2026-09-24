@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Field notes | RelayNorth</title>
+  <meta name="description" content="Plain-language notes on browser relays, privacy, and safe proxy design.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar"><a class="brand" href="/"><span class="brand-mark">↗</span><span>RelayNorth</span></a><nav class="nav" aria-label="Main navigation"><a href="/faq">How it works</a><a class="nav-cta" href="/">Open a site</a></nav></header>
+    <main>
+      <section class="page-intro"><span class="kicker">the field notes</span><h1>Proxy guides without the sales pitch.</h1><p>Straight explanations of what a browser relay can protect, how sessions behave, and which promises deserve a second look.</p></section>
+      <section class="section"><div class="article-grid" id="article-grid"><p class="fine-print">Loading field notes…</p></div></section>
+    </main>
+    <footer class="footer"><span>© 2026 RelayNorth.</span><div class="footer-links"><a href="/">Home</a><a href="/privacy">Privacy</a><a href="/admin/">Admin</a></div></footer>
+  </div>
+  <script src="/config.js"></script>
+  <script>
+    const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+    const grid = document.getElementById('article-grid');
+    const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    (async function loadPosts() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/blog/posts`, {headers: {Accept: 'application/json'}});
+        if (!response.ok) throw new Error('Could not load field notes.');
+        const posts = await response.json();
+        if (!Array.isArray(posts) || posts.length === 0) {
+          grid.innerHTML = '<p class="fine-print">No field notes published yet.</p>';
+          return;
+        }
+        grid.innerHTML = posts.map(post =>
+          `<a class="article-card" href="/blog/${encodeURIComponent(post.slug)}"><span class="eyebrow">${esc(post.category)} · 6 min read</span><h2>${esc(post.title)}</h2><p>${esc(post.excerpt)}</p><span class="card-arrow">Read the field note ↗</span></a>`
+        ).join('');
+      } catch (error) {
+        grid.innerHTML = `<p class="fine-print">${esc(error.message)}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>
