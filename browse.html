@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">
+  <title>Open through RelayNorth</title><link rel="stylesheet" href="/styles.css">
+  <style>
+    body{min-height:100vh}.browser-shell{height:calc(100vh - 90px);display:grid;grid-template-rows:auto 1fr;gap:1rem;padding-bottom:1rem}.browser-toolbar{display:flex;gap:.7rem;align-items:center;padding:1rem 0;border-bottom:1px solid var(--line)}.browser-toolbar a{color:var(--cobalt);font-weight:800;font-size:.85rem}.browser-url{flex:1;min-width:0;padding:.75rem 1rem;border:1px solid var(--line);background:var(--white);border-radius:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'DM Mono',monospace;font-size:.75rem}.browser-status{white-space:nowrap}.browser-ip{white-space:nowrap;color:var(--muted);font-family:'DM Mono',monospace;font-size:.72rem}.browser-frame{width:100%;height:100%;min-height:60vh;border:1px solid var(--line);background:var(--white);box-shadow:var(--shadow)}.browser-message{display:grid;justify-items:center;gap:.7rem;padding:clamp(3rem,10vw,7rem) 1.5rem;text-align:center;border:1px solid var(--line);background:var(--white)}.browser-message h1{max-width:12ch;margin:0;font-family:'Playfair Display',Georgia,serif;font-size:clamp(2rem,7vw,4rem);line-height:.95;letter-spacing:-.06em}.browser-message p{max-width:42ch;margin:0;color:var(--muted)}.browser-message .primary-btn{min-width:11rem;margin-top:.6rem;padding:0 1rem}.browser-detail{font-family:'DM Mono',monospace;font-size:.72rem;color:var(--muted)}
+    @media(max-width:640px){.browser-shell{height:auto;min-height:calc(100vh - 84px)}.browser-toolbar{align-items:stretch;flex-wrap:wrap}.browser-toolbar a{display:inline-flex;align-items:center;min-height:44px}.browser-url{order:3;flex-basis:100%}.browser-status{margin-left:auto}.browser-frame{min-height:68vh}}
+  </style>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar"><a class="brand" href="/"><span class="brand-mark">↗</span><span>RelayNorth</span></a><nav class="nav" aria-label="Browse navigation"><a href="/faq">How it works</a><a class="nav-cta" href="/">New session</a></nav></header>
+    <main class="browser-shell">
+      <div class="browser-toolbar"><a href="/">← Home</a><div class="browser-url" id="target-label">Preparing relay session…</div><span class="browser-ip" id="relay-ip"></span><span class="eyebrow browser-status" id="session-label" role="status">checking</span></div>
+      <div id="frame-area"><div class="browser-message"><span class="kicker">Regional relay</span><h1>Opening your tab…</h1><p>Only approved test origins are enabled in this build.</p></div></div>
+    </main>
+  </div>
+  <script src="/config.js"></script>
+  <script>
+    // Same-origin by default; window.__API_BASE__ (config.js) points at the
+    // backend when the site is hosted separately.
+    const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+    const params = new URLSearchParams(location.search);
+    let session = params.get('session');
+    let token = params.get('token');
+    const target = params.get('url');
+    const region = params.get('region') || 'eu';
+    const label = document.querySelector('#target-label');
+    const sessionLabel = document.querySelector('#session-label');
+    const relayIpLabel = document.querySelector('#relay-ip');
+    const area = document.querySelector('#frame-area');
+    let frameTimer;
+    let statusTimer;
+
+    function escapeHtml(value = '') {
+      return String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+    }
+
+    const messages = {
+      missing: ['No relay session to open.', 'Return home, choose an approved destination, and start a fresh session.'],
+      expired: ['This session has expired.', 'Sessions are short-lived by design. Start a new session to continue safely.'],
+      blocked: ['This destination is not available.', 'RelayNorth only opens approved HTTPS test origins in this build.'],
+      unavailable: ['This relay cell is unavailable.', 'Your session is pinned to its original cell. Start again after the operator brings it back.'],
+      failed: ['The page did not load.', 'The destination may be slow, unavailable, or incompatible with this tab-level relay.'],
+    };
+
+    function showMessage(kind, detail = '') {
+      const copy = messages[kind] || messages.failed;
+      sessionLabel.textContent = kind === 'expired' ? 'expired' : 'needs attention';
+      area.innerHTML = `<div class="browser-message"><span class="kicker">Relay update</span><h1>${copy[0]}</h1><p>${copy[1]}</p>${detail ? `<span class="browser-detail">${escapeHtml(detail)}</span>` : ''}<a class="primary-btn" href="/">Start a new session</a></div>`;
+    }
+
+    function updateCountdown(expiresAt) {
+      const remaining = Math.max(0, Number(expiresAt) - Math.floor(Date.now() / 1000));
+      if (!remaining) { clearInterval(statusTimer); clearTimeout(frameTimer); showMessage('expired'); return false; }
+      const minutes = Math.floor(remaining / 60);
+      sessionLabel.textContent = `active · ${minutes}m left`;
+      return true;
+    }
+
+    async function ensureSession() {
+      // Direct /browse?url=… links (e.g. the "starting point" chips) arrive
+      // without a session; create one server-side so the shortcut still works.
+      if (session && token) return true;
+      if (!target) return false;
+      const created = await fetch(API_BASE + '/api/v1/sessions', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url: target, region })
+      });
+      const info = await created.json().catch(() => ({}));
+      if (!created.ok) throw new Error(info.detail || 'Session could not be created.');
+      session = info.session_id;
+      token = info.session_token;
+      return true;
+    }
+
+    async function checkSession() {
+      if (!target) { showMessage('missing'); return; }
+      label.textContent = target;
+      try {
+        if (!(await ensureSession())) { showMessage('missing'); return; }
+        const response = await fetch(`${API_BASE}/api/v1/sessions/${encodeURIComponent(session)}/status`, {headers:{Accept:'application/json'}});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || 'Session status could not be checked.');
+        if (data.egress_ip) relayIpLabel.textContent = `relay IP ${data.egress_ip}`;
+        if (!updateCountdown(data.expires_at)) return;
+        const frame = document.createElement('iframe');
+        frame.className = 'browser-frame'; frame.title = 'Relayed website'; frame.setAttribute('sandbox','allow-forms allow-scripts');
+        frame.addEventListener('load', () => { clearTimeout(frameTimer); sessionLabel.textContent = 'relay connected'; });
+        frame.addEventListener('error', () => { clearTimeout(frameTimer); showMessage('failed'); });
+        frame.src = `${API_BASE}/api/v1/proxy/${encodeURIComponent(session)}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(target)}`;
+        area.replaceChildren(frame);
+        frameTimer = setTimeout(() => showMessage('failed', 'The relay did not respond within 12 seconds.'), 12000);
+        statusTimer = setInterval(() => updateCountdown(data.expires_at), 15000);
+      } catch (error) {
+        const kind = /expired|not found/i.test(error.message) ? 'expired' : /unavailable|pinned/i.test(error.message) ? 'unavailable' : /approved|destination|scheme|origin/i.test(error.message) ? 'blocked' : 'failed';
+        showMessage(kind, error.message);
+      }
+    }
+    checkSession();
+  </script>
+</body>
+</html>
