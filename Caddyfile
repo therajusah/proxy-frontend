@@ -1,0 +1,24 @@
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode gzip
+
+	# Blog is rendered client-side from the backend API.
+	handle /blog {
+		rewrite * /blog-shell.html
+		file_server
+	}
+	handle /blog/* {
+		rewrite * /article-shell.html
+		file_server
+	}
+	# Static pages with clean URLs; SPA-style fallback to the landing page.
+	handle {
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+}
